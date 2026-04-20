@@ -6,7 +6,7 @@ import zipfile
 
 st.set_page_config(page_title="Automation Data Absen", layout="centered")
 
-st.title("📊 Automation Data Absen")
+st.title("Automation Data Absen")
 
 BASE_URL = "https://teko-cak.surabaya.go.id/cetak_new/lap_per_pegawai2/"
 ID_INSTANSI = "3.10.00.00.00"
@@ -15,7 +15,8 @@ st.sidebar.header("Navigasi")
 menu = st.sidebar.radio("Pilih Menu:", ["Download Template", "Proses Download Data"])
 
 if menu == "Download Template":
-    st.subheader("📥 Download Template Excel")
+    st.subheader("Download Template Excel")
+    st.write("Silakan download template Excel berikut untuk mengisi data pegawai yang akan diproses:")
     data_template = {
         'Nama_Pegawai': ['ACHMAD SHOLIKIN', 'CONTOH PEGAWAI 2'],
         'ID_Pegawai': ['7f66455c-ee57-11ea-8acf-000c29766abb', '35951734-ece8-11ea-9cd7-000c29766abb'],
@@ -30,7 +31,7 @@ if menu == "Download Template":
     st.download_button("Download Template (.xlsx)", data=buffer.getvalue(), file_name="template_absen.xlsx")
 
 else:
-    st.subheader("🚀 Proses Download")
+    st.subheader("Proses Download Data Absen")
     
     col1, col2 = st.columns(2)
     with col1:
@@ -82,15 +83,15 @@ else:
                     
                     progress_bar.progress((index + 1) / len(df))
 
-            status_text.success("✅ Selesai!")
+            status_text.success("Proses selesai")
 
             if output_mode == "File ZIP (Rekomendasi)":
                 st.download_button(
-                    label="🎁 Download Semua (ZIP)",
+                    label="Download Semua (ZIP)",
                     data=zip_buffer.getvalue(),
                     file_name=f"Laporan_Absen_{file_type}.zip",
                     mime="application/zip"
                 )
             else:
                 for f in success_files:
-                    st.download_button(label=f"💾 Simpan {f['name']}", data=f['content'], file_name=f['name'])
+                    st.download_button(label=f"Simpan {f['name']}", data=f['content'], file_name=f['name'])
