@@ -4,6 +4,7 @@ import requests
 import io
 import zipfile
 import streamlit.components.v1 as components
+from streamlit_option_menu import option_menu
 from bs4 import BeautifulSoup
 import base64
 
@@ -14,8 +15,28 @@ st.title("Automation Data Absen")
 BASE_URL = "https://teko-cak.surabaya.go.id/cetak_new/lap_per_pegawai2/"
 ID_INSTANSI = "3.10.00.00.00"
 
-st.sidebar.header("Navigasi")
-menu = st.sidebar.radio("Pilih Menu:", ["Download Template", "Proses Download Data", "Hitung Potongan"])
+with st.sidebar:
+    st.image("https://www.surabaya.go.id/images/logo.png", width=100)
+    st.title("Main Menu")
+    
+    menu = option_menu(
+        menu_title=None,
+        options=["Download Template", "Proses Download Data", "Hitung Potongan"],
+        icons=["cloud-download", "box-arrow-in-down", "calculator"],
+        menu_icon="cast", 
+        default_index=0,
+        styles={
+            "container": {"padding": "5px", "background-color": "#262730"},
+            "icon": {"color": "#00d4ff", "font-size": "18px"}, 
+            "nav-link": {
+                "font-size": "14px", 
+                "text-align": "left", 
+                "margin": "5px", 
+                "--hover-color": "#31333f"
+            },
+            "nav-link-selected": {"background-color": "#007bff"},
+        }
+    )
 
 if menu == "Download Template":
     st.subheader("Download Template Excel")
