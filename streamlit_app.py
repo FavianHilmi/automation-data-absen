@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 import io
 import zipfile
+from bs4 import BeautifulSoup
 
 st.set_page_config(page_title="Automation Data Absen", layout="centered")
 
@@ -97,95 +98,105 @@ elif menu == "Proses Download Data":
                     st.download_button(label=f"Simpan {f['name']}", data=f['content'], file_name=f['name'])     
 
 elif menu == "Hitung Potongan":
-    st.subheader("Hitung Persentase Potongan Kehadiran")
-    st.info("💡 Menu ini digunakan untuk memproses **File Laporan (XLS)** hasil download, bukan file template daftar pegawai.")
+    st.subheader("Hitung Potongan via Web Scraping")
+    st.write("Upload template excel untuk mengambil data langsung dari server.")
 
-    uploaded_files = st.file_uploader("Upload File XLS Laporan:", type=["xlsx", "xls"], accept_multiple_files=True)
+    # Pilihan output
+    out_format = st.selectbox("Pilih Format Output:", ["Excel", "PDF"])
+    uploaded_file = st.file_uploader("Upload Template Pegawai:", type=["xlsx", "xls"])
 
-    if uploaded_files:
+    if uploaded_file:
+        df_pegawai = pd.read_excel(uploaded_file)
         all_results = []
 
-        for uploaded_file in uploaded_files:
-            try:
-                # Baca file untuk cek strukturnya
-                df_test = pd.read_excel(uploaded_file, header=None, nrows=5)
+        if st.button("Mulai Hitung Potongan"):
+            progress_bar = st.progress(0)
+            
+            for idx, row_peg in df_pegawai.iterrows():
+                nama = row_peg['Nama_Pegawai']
+                # Construct URL tanpa parameter 'type' untuk mendapatkan HTML
+                params = {
+                    'tgl': row_peg['Tanggal_Akhir'],
+                    'bulan': str(row_peg['Bulan']).zfill(2),
+                    'tahun': row_peg['Tahun'],
+                    'id_instansi': ID_INSTANSI,
+                    'id_pegawai': row_peg['ID_Pegawai']
+                }
                 
-                # CEK: Apakah ini file template? (Jika cell A1 adalah 'Nama_Pegawai')
-                if df_test.iloc[0, 0] == 'Nama_Pegawai':
-                    st.warning(f"File '{uploaded_file.name}' terdeteksi sebagai file TEMPLATE. Mohon upload file laporan hasil download.")
-                    continue
+                try:
+                    response = requests.get(BASE_URL, params=params, timeout=30)
+                    if response.status_code == 200:
+                        # Parsing HTML Tabel (Biasanya tabel absen ada di index 0 atau 1)
+                        # Kita gunakan pd.read_html untuk kemudahan
+                        tables = pd.read_html(io.StringIO(response.text))
+                        df_absen = tables[0] # Ambil tabel utama
 
-                # 1. Ambil Nama Pegawai (Laporan Surabaya biasanya di Cell B4 / baris index 3, kolom index 1)
-                nama_pegawai = df_test.iloc[3, 1] if len(df_test) > 3 else "Unknown"
+                        # Bersihkan data: cari baris di mana data dimulai (biasanya setelah header)
+                        # Kita cari baris yang punya info Tanggal
+                        df_absen.columns = [str(c).upper() for c in df_absen.iloc[9]] # Header ada di baris 10 (index 9)
+                        df_absen = df_absen.iloc[10:].reset_index(drop=True)
 
-                # 2. Baca data tabel (Skip 9 baris untuk menuju header tabel asli)
-                df_absen = pd.read_excel(uploaded_file, skiprows=9)
-                
-                # Bersihkan kolom
-                df_absen.columns = [str(c).strip() for c in df_absen.columns]
-
-                # Validasi: Apakah kolom TANGGAL ada?
-                if 'TANGGAL' not in df_absen.columns:
-                    st.error(f"Format file '{uploaded_file.name}' tidak sesuai dengan format laporan standar.")
-                    continue
-
-                for index, row in df_absen.iterrows():
-                    if pd.isna(row.get('HARI')) or "TOTAL" in str(row.get('HARI')).upper():
-                        break
-                    
-                    potongan = 0.0
-                    ket_list = []
-                    
-                    # LOGIKA 1: Tidak Masuk (3%)
-                    if str(row.get('ETERANGA')) == '*' and row['HARI'] not in ['MINGGU', 'SABTU']:
-                        potongan = 3.0
-                        ket_list.append("Tidak Masuk (3%)")
-                    
-                    else:
-                        # LOGIKA 2: Absen Bolong (1.5%)
-                        if pd.isna(row.get('MASUK')):
-                            potongan += 1.5
-                            ket_list.append("Tanpa Absen Masuk (1.5%)")
-                        if pd.isna(row.get('PULANG')):
-                            potongan += 1.5
-                            ket_list.append("Tanpa Absen Pulang (1.5%)")
-
-                        # LOGIKA 3: Terlambat
-                        # Index 5 = JAM, Index 6 = MENIT (Berdasarkan format laporan asli)
-                        jam_t = row.iloc[5] if pd.notna(row.iloc[5]) and isinstance(row.iloc[5], (int, float)) else 0
-                        menit_t = row.iloc[6] if pd.notna(row.iloc[6]) and isinstance(row.iloc[6], (int, float)) else 0
-                        
-                        total_menit = (jam_t * 60) + menit_t
-
-                        if total_menit > 0:
-                            if 1 <= total_menit <= 15: p_val = 0.25
-                            elif 16 <= total_menit <= 60: p_val = 0.5
-                            elif 61 <= total_menit <= 120: p_val = 1.0
-                            else: p_val = 1.5
+                        for _, row in df_absen.iterrows():
+                            # Berhenti jika bertemu baris TOTAL
+                            if "TOTAL" in str(row.get('HARI')).upper() or pd.isna(row.get('HARI')):
+                                break
                             
-                            potongan += p_val
-                            ket_list.append(f"Terlambat {int(total_menit)} mnt ({p_val}%)")
+                            potongan = 0.0
+                            detail = []
 
-                    if potongan > 0:
-                        all_results.append({
-                            "Nama Pegawai": nama_pegawai,
-                            "Tanggal": row.get('TANGGAL'),
-                            "Hari": row.get('HARI'),
-                            "Potongan (%)": potongan,
-                            "Keterangan": " + ".join(ket_list)
-                        })
-            except Exception as e:
-                st.error(f"Error pada file {uploaded_file.name}: {e}")
+                            # 1. Logika Tidak Masuk (3%) - Cek kolom Keterangan (index terakhir biasanya)
+                            ket = str(row.iloc[-1]).strip()
+                            if ket == 'M' or ket == '*': # M = Mangkir/Alpha
+                                if str(row.get('HARI')) not in ['SABTU', 'MINGGU']:
+                                    potongan = 3.0
+                                    detail.append("Tidak Masuk (3%)")
+                            else:
+                                # 2. Cek Tidak Absen Masuk/Pulang (1.5%)
+                                if pd.isna(row.get('MASUK')) or row.get('MASUK') == '-':
+                                    potongan += 1.5
+                                    detail.append("Tdk Absen Masuk (1.5%)")
+                                if pd.isna(row.get('PULANG')) or row.get('PULANG') == '-':
+                                    potongan += 1.5
+                                    detail.append("Tdk Absen Pulang (1.5%)")
 
-        if all_results:
-            df_hasil = pd.DataFrame(all_results)
-            st.success(f"Ditemukan {len(df_hasil)} catatan potongan.")
-            st.dataframe(df_hasil, use_container_width=True)
+                                # 3. Logika Terlambat (JAM di index 5, MENIT di index 6)
+                                try:
+                                    j = float(row.iloc[5]) if pd.notna(row.iloc[5]) and str(row.iloc[5]) != '-' else 0
+                                    m = float(row.iloc[6]) if pd.notna(row.iloc[6]) and str(row.iloc[6]) != '-' else 0
+                                    tot_menit = (j * 60) + m
 
-            # Export
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                df_hasil.to_excel(writer, index=False, sheet_name='Rekap Potongan')
-            st.download_button("Download Hasil Perhitungan (Excel)", output.getvalue(), "rekap_potongan.xlsx")
-        else:
-            st.info("Tidak ada potongan yang perlu diproses dari file yang diupload.")
+                                    if tot_menit > 0:
+                                        if 1 <= tot_menit <= 15: p = 0.25
+                                        elif 16 <= tot_menit <= 60: p = 0.5
+                                        elif 61 <= tot_menit <= 120: p = 1.0
+                                        else: p = 1.5
+                                        potongan += p
+                                        detail.append(f"Telat {int(tot_menit)}m ({p}%)")
+                                except: pass
+
+                            if potongan > 0:
+                                all_results.append({
+                                    "Nama Pegawai": nama,
+                                    "Tanggal": row.get('TANGGAL'),
+                                    "Potongan (%)": potongan,
+                                    "Keterangan": ", ".join(detail)
+                                })
+                    
+                    progress_bar.progress((idx + 1) / len(df_pegawai))
+                except Exception as e:
+                    st.error(f"Error pada {nama}: {e}")
+
+            if all_results:
+                df_final = pd.DataFrame(all_results)
+                st.write("### Hasil Analisis Potongan")
+                st.table(df_final)
+
+                if out_format == "Excel":
+                    buf = io.BytesIO()
+                    with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
+                        df_final.to_excel(writer, index=False)
+                    st.download_button("Download Excel", buf.getvalue(), "rekap_potongan.xlsx")
+                else:
+                    st.warning("Fitur Export PDF memerlukan library fpdf. Disarankan gunakan Excel untuk saat ini.")
+            else:
+                st.success("Luar biasa! Tidak ada potongan terdeteksi.")
