@@ -3,3 +3,6 @@ pandas
 requests
 xlsxwriter
 openpyxl
+beautifulsoup4
+lxml
+html5lib
