@@ -42,7 +42,7 @@ if menu == "Download Template":
     st.subheader("Download Template Excel")
     st.write("Silakan download template Excel berikut untuk mengisi data pegawai yang akan diproses:")
     data_template = {
-        'Nama_Pegawai': ['ACHMAD SHOLIKIN', 'CONTOH PEGAWAI 2'],
+        'Nama_Pegawai': ['ACHMAD SHOLIKIN', 'HERU WIJIANTO'],
         'ID_Pegawai': ['7f66455c-ee57-11ea-8acf-000c29766abb', '35951734-ece8-11ea-9cd7-000c29766abb'],
         'Tanggal_Akhir': [31, 31], 'Bulan': ['03', '03'], 'Tahun': [2026, 2026]
     }
