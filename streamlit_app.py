@@ -40,7 +40,7 @@ with st.sidebar:
 
 if menu == "Download Template":
     st.subheader("Download Template Excel")
-    st.write("Silakan download template Excel berikut untuk mengisi data pegawai yang akan diproses:")
+    st.write("Template di bawah ini buat dipakai saat proses Download Data & Hitung Potongan Gaji:")
     data_template = {
         'Nama_Pegawai': ['ACHMAD SHOLIKIN', 'HERU WIJIANTO'],
         'ID_Pegawai': ['7f66455c-ee57-11ea-8acf-000c29766abb', '35951734-ece8-11ea-9cd7-000c29766abb'],
@@ -153,7 +153,7 @@ elif menu == "Hitung Potongan":
             
             for idx, row_peg in df_pegawai.iterrows():
                 nama = row_peg['Nama_Pegawai']
-                status_text.text(f"Menganalisis: {nama}...")
+                status_text.text(f"Sekedhap, memproses: {nama}...")
                 
                 params = {
                     'tgl': row_peg['Tanggal_Akhir'],
@@ -237,7 +237,6 @@ elif menu == "Hitung Potongan":
             with st.expander("Total Potongan Gaji", expanded=True):
                 df_summary_raw = df_detail.groupby("Nama").agg({
                     "Potongan (%)": "sum",
-                    "Alasan": lambda x: " + ".join(x)
                 }).reset_index()
 
                 df_summary_web = df_summary_raw.copy()
@@ -259,9 +258,9 @@ elif menu == "Hitung Potongan":
             st.download_button(
                 label="Download Laporan (Excel)",
                 data=buf.getvalue(),
-                file_name="rekap_potongan.xlsx",
+                file_name="rekap_potongan_{''}.xlsx",
                 mime="application/vnd.ms-excel",
                 use_container_width=True
             )
         elif st.session_state.hasil_potongan == []:
-            st.info("Tidak ditemukan potongan pada periode ini.")
+            st.info("Jos, Karyawan e disiplin!")
