@@ -95,7 +95,7 @@ elif menu == "Proses Download Data":
                             ext = "pdf" if file_type == "pdf" else "xls"
                             file_name = f"Laporan_{nama}_{params['tgl']}-{params['bulan']}.{ext}"
                             
-                            if output_mode == "File ZIP (Rekomendasi)":
+                            if output_mode == "File ZIP":
                                 zip_file.writestr(file_name, response.content)
                             else:
                                 success_files.append({"name": file_name, "content": response.content})
@@ -222,7 +222,7 @@ elif menu == "Hitung Potongan":
                                 if potongan > 0:
                                     all_results.append({
                                         "Nama": nama, "Tanggal": tgl_val, "Hari": hari_val,
-                                        "Potongan (%)": potongan, "Alasan": " + ".join(detail)
+                                        "Potongan (%)": potongan
                                     })
                     progress_bar.progress((idx + 1) / len(df_pegawai))
                 except Exception as e:
@@ -231,38 +231,37 @@ elif menu == "Hitung Potongan":
             st.session_state.hasil_potongan = all_results
             status_text.success("Selesai!")
 
-            if st.session_state.hasil_potongan:
-                df_detail = pd.DataFrame(st.session_state.hasil_potongan)
-                
-                with st.expander("Ringkasan Total Potongan", expanded=True):
-                    df_summary_raw = df_detail.groupby("Nama").agg({
-                        "Potongan (%)": "sum"
-                    }).reset_index()
+        if st.session_state.hasil_potongan:
+            df_detail = pd.DataFrame(st.session_state.hasil_potongan)
+            
+            with st.expander("Total Potongan Gaji", expanded=True):
+                df_summary_raw = df_detail.groupby("Nama").agg({
+                    "Potongan (%)": "sum",
+                    "Alasan": lambda x: " + ".join(x)
+                }).reset_index()
 
-                    df_summary_web = df_summary_raw.copy()
-                    df_summary_web["Ringkasan"] = df_summary_web.apply(
-                        lambda row: f"{row['Potongan (%)']:.2f}%", axis=1
-                    )
-                    
-                    st.dataframe(
-                        df_summary_web[["Nama", "Ringkasan"]], 
-                        use_container_width=True
-                    )
-                with st.expander("Rincian Harian", expanded=False):
-                    st.dataframe(df_detail, use_container_width=True)
-
-                buf = io.BytesIO()
-                with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
-                    df_summary_raw.to_excel(writer, sheet_name='Summary', index=False)
-                    df_detail.to_excel(writer, sheet_name='Detail_Harian', index=False)
-                
-                st.write("")
-                st.download_button(
-                    label="Download Laporan (Excel)",
-                    data=buf.getvalue(),
-                    file_name="rekap_potongan.xlsx",
-                    mime="application/vnd.ms-excel",
-                    use_container_width=True
+                df_summary_web = df_summary_raw.copy()
+                df_summary_web["Ringkasan"] = df_summary_web.apply(
+                    lambda row: f"{row['Potongan (%)']:.2f}%", axis=1
                 )
-            else:
-                st.info("Tidak ditemukan potongan pada periode ini.")
+                
+                st.dataframe(df_summary_web[["Nama", "Ringkasan"]], use_container_width=True)
+            
+            with st.expander("Rincian Harian", expanded=False):
+                st.dataframe(df_detail, use_container_width=True)
+
+            buf = io.BytesIO()
+            with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
+                df_summary_raw.to_excel(writer, sheet_name='Summary', index=False)
+                df_detail.to_excel(writer, sheet_name='Detail_Harian', index=False)
+            
+            st.write("")
+            st.download_button(
+                label="Download Laporan (Excel)",
+                data=buf.getvalue(),
+                file_name="rekap_potongan.xlsx",
+                mime="application/vnd.ms-excel",
+                use_container_width=True
+            )
+        elif st.session_state.hasil_potongan == []:
+            st.info("Tidak ditemukan potongan pada periode ini.")
