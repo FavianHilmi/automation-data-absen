@@ -101,7 +101,7 @@ elif menu == "Hitung Potongan":
     st.write("Upload file laporan (XLS) untuk dihitung potongannya sesuai aturan.")
 
     # Gunakan file_uploader untuk menerima banyak file sekaligus
-    uploaded_files = st.file_uploader("Upload File XLS Laporan:", type=["xls"], accept_multiple_files=True)
+    uploaded_files = st.file_uploader("Upload File XLS Laporan:", type=["xlsx"], accept_multiple_files=True)
 
     if uploaded_files:
         all_results = []
