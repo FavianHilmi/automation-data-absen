@@ -142,9 +142,12 @@ elif menu == "Hitung Potongan":
 
     if uploaded_file:
         df_pegawai = pd.read_excel(uploaded_file)
-        all_results = []
+
+        if "hasil_potongan" not in st.session_state:
+            st.session_state.hasil_potongan = None
 
         if st.button("Hitung Potongan"):
+            all_results = []
             progress_bar = st.progress(0)
             status_text = st.empty()
             
@@ -225,15 +228,15 @@ elif menu == "Hitung Potongan":
                 except Exception as e:
                     st.error(f"Error {nama}: {e}")
 
+            st.session_state.hasil_potongan = all_results
             status_text.success("Selesai!")
 
-            if all_results:
-                df_detail = pd.DataFrame(all_results)
+            if st.session_state.hasil_potongan:
+                df_detail = pd.DataFrame(st.session_state.hasil_potongan)
                 
                 with st.expander("Ringkasan Total Potongan", expanded=True):
                     df_summary_raw = df_detail.groupby("Nama").agg({
-                        "Potongan (%)": "sum",
-                        "Alasan": lambda x: " + ".join(x)
+                        "Potongan (%)": "sum"
                     }).reset_index()
 
                     df_summary_web = df_summary_raw.copy()
