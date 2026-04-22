@@ -12,7 +12,7 @@ BASE_URL = "https://teko-cak.surabaya.go.id/cetak_new/lap_per_pegawai2/"
 ID_INSTANSI = "3.10.00.00.00"
 
 st.sidebar.header("Navigasi")
-menu = st.sidebar.radio("Pilih Menu:", ["Download Template", "Proses Download Data"])
+menu = st.sidebar.radio("Pilih Menu:", ["Download Template", "Proses Download Data, Hitung Potongan"])
 
 if menu == "Download Template":
     st.subheader("Download Template Excel")
