@@ -126,73 +126,84 @@ elif menu == "Hitung Potongan":
                 try:
                     response = requests.get(BASE_URL, params=params, timeout=30)
                     if response.status_code == 200:
-    from bs4 import BeautifulSoup
-    soup = BeautifulSoup(response.text, 'html.parser')
-    table = soup.find('table', {'border': '1'})
-    
-    if table:
-        rows = table.find('tbody').find_all('tr')
-        
-        # --- DEBUG START ---
-        # Lihat baris pertama yang ditemukan untuk memastikan index kolom benar
-        test_cols = rows[0].find_all('td')
-        st.write(f"DEBUG: Baris pertama ditemukan {len(test_cols)} kolom.")
-        # Menampilkan isi setiap kolom agar kamu tahu index mana yang berisi jam/menit telat
-        debug_data = {f"Col {i}": col.get_text(strip=True) for i, col in enumerate(test_cols)}
-        st.json(debug_data) 
-        # --- DEBUG END ---
+                        # Gunakan StringIO agar tidak ada warning
+                        html_data = io.StringIO(response.text)
+                        # Kita ambil tabel ke-2 (index 1) karena tabel pertama biasanya header Nama/NIP
+                        all_tables = pd.read_html(html_data)
+                        
+                        # Cari tabel yang ada kata 'TANGGAL'
+                        df_absen = None
+                        for t in all_tables:
+                            if any('TANGGAL' in str(col).upper() for col in t.columns.get_level_values(0)):
+                                df_absen = t
+                                break
+                        
+                        if df_absen is not None:
+                            # Sederhanakan kolom (menggabungkan multi-index jika ada)
+                            if isinstance(df_absen.columns, pd.MultiIndex):
+                                df_absen.columns = ['_'.join(col).strip() if 'Unnamed' not in col[1] else col[0] for col in df_absen.columns]
+                            
+                            # Mapping index kolom secara manual berdasarkan struktur HTML yang kamu kirim
+                            # Index 0: HARI, 1: TANGGAL, 3: MASUK, 4: JAM_TELAT, 5: MENIT_TELAT, 6: PULANG, -1: KET
+                            
+                            for _, row in df_absen.iterrows():
+                                hari_val = str(row.iloc[0]).upper().strip()
+                                tgl_val = str(row.iloc[1]).upper().strip()
 
-        for row in rows:
-            cols = row.find_all('td')
-            # Lewati baris yang bukan data harian (seperti TOTAL atau baris kosong)
-            if len(cols) < 10:
-                continue
+                                # 1. STOP jika ketemu baris TOTAL
+                                if "TOTAL" in hari_val or "TOTAL" in tgl_val or hari_val == 'NAN' or not hari_val:
+                                    break
+                                
+                                # 2. Lewati jika baris header yang terbaca ulang
+                                if "HARI" in hari_val:
+                                    continue
 
-            hari_val = cols[0].get_text(strip=True).upper()
-            jam_telat_raw = cols[4].get_text(strip=True)
-            mnt_telat_raw = cols[5].get_text(strip=True)
-
-            # Debug spesifik untuk melihat angka telat yang terbaca
-            if jam_telat_raw != "-" or mnt_telat_raw != "-":
-                st.write(f"🔍 Terdeteksi Potensi Telat: {hari_val} | Jam: {jam_telat_raw} | Menit: {mnt_telat_raw}")
+                                potongan = 0.0
+                                detail = []
+                                ket = str(row.iloc[-1]).strip().upper()
 
                                 # --- LOGIKA POTONGAN ---
-                                if ket_val == 'M':
+                                if ket == 'M': # Mangkir
                                     if hari_val not in ['SABTU', 'MINGGU']:
                                         potongan = 3.0
                                         detail.append("Mangkir (3%)")
                                 
-                                elif ket_val in ['H', '', 'NAN']:
-                                    # 1. Cek Absen Bolong
-                                    if masuk_val in ['-', '']:
+                                elif ket in ['H', '', 'NAN']: # Hadir atau belum ada ket
+                                    # A. Cek Absen Bolong (1.5% per kolom)
+                                    masuk = str(row.iloc[3]).strip()
+                                    pulang = str(row.iloc[6]).strip()
+                                    
+                                    if masuk in ['-', '', 'nan']:
                                         potongan += 1.5
                                         detail.append("Tdk Absen Masuk (1.5%)")
-                                    if pulang_val in ['-', '']:
+                                    if pulang in ['-', '', 'nan']:
                                         potongan += 1.5
                                         detail.append("Tdk Absen Pulang (1.5%)")
 
-                                    # 2. Cek Telat (Ini bagian krusialnya)
+                                    # B. Cek Telat (Logika yang kamu minta)
                                     try:
-                                        def to_float(val):
-                                            val = val.replace('-', '0').strip()
-                                            return float(val) if val else 0.0
+                                        def clean_num(v):
+                                            v = str(v).replace('-', '0').strip()
+                                            return float(v) if v else 0.0
 
-                                        j_telat = to_float(jam_telat_val)
-                                        m_telat = to_float(mnt_telat_val)
-                                        tot_menit = (j_telat * 60) + m_telat
+                                        # Berdasarkan HTML: iloc[4] adalah JAM telat, iloc[5] adalah MENIT telat
+                                        jam_telat = clean_num(row.iloc[4])
+                                        menit_telat = clean_num(row.iloc[5])
+                                        total_menit = (jam_telat * 60) + menit_telat
 
-                                        if tot_menit > 0:
+                                        if total_menit > 0:
                                             p_telat = 0
-                                            if 1 <= tot_menit <= 15: p_telat = 0.25
-                                            elif 16 <= tot_menit <= 60: p_telat = 0.5
-                                            elif 61 <= tot_menit <= 120: p_telat = 1.0
+                                            if 1 <= total_menit <= 15: p_telat = 0.25
+                                            elif 16 <= total_menit <= 60: p_telat = 0.5
+                                            elif 61 <= total_menit <= 120: p_telat = 1.0
                                             else: p_telat = 1.5
                                             
                                             potongan += p_telat
-                                            detail.append(f"Telat {int(tot_menit)}m ({p_telat}%)")
+                                            detail.append(f"Telat {int(total_menit)}m ({p_telat}%)")
                                     except:
                                         pass
 
+                                # Simpan jika ada potongan
                                 if potongan > 0:
                                     all_results.append({
                                         "Nama": nama,
