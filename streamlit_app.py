@@ -216,7 +216,7 @@ elif menu == "Hitung Potongan":
 
                 df_summary_web = df_summary_raw.copy()
                 df_summary_web["Ringkasan"] = df_summary_web.apply(
-                    lambda row: f"{row['Potongan (%)']:.2f}% — Detail: {row['Alasan']}", axis=1
+                    lambda row: f"{row['Potongan (%)']:.2f}%", axis=1
                 )
                 
                 st.dataframe(df_summary_web[["Nama", "Ringkasan"]].style.highlight_max(axis=0, color='#ffcccc'), use_container_width=True)
