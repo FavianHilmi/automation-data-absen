@@ -219,7 +219,7 @@ elif menu == "Hitung Potongan":
                     lambda row: f"{row['Potongan (%)']:.2f}%", axis=1
                 )
                 
-                st.dataframe(df_summary_web[["Nama", "Ringkasan"]].style.highlight_max(axis=0, color='#ffcccc'), use_container_width=True)
+                st.dataframe(df_summary_web[["Nama", "Ringkasan"]], use_container_width=True)
                 st.write("### Rincian Harian")
                 st.dataframe(df_detail, use_container_width=True)
 
