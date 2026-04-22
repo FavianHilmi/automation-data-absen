@@ -96,12 +96,6 @@ else:
                 for f in success_files:
                     st.download_button(label=f"Simpan {f['name']}", data=f['content'], file_name=f['name'])     
 
-Tentu, ini ide yang bagus untuk melengkapi tool automasi kamu. Karena kamu sudah menggunakan Pandas dan Streamlit, kita bisa menambahkan menu baru dengan logika perhitungan yang kamu minta.
-
-Berikut adalah tambahan kode untuk menu "Hitung Potongan". Kamu bisa menyisipkan bagian ini ke dalam struktur if-elif pada navigasi sidebar kamu.
-
-Tambahan Logika Menu "Hitung Potongan"
-Python
 elif menu == "Hitung Potongan":
     st.subheader("Hitung Persentase Potongan Kehadiran")
     st.write("Upload file laporan (XLS) yang sudah didownload untuk dihitung potongannya.")
