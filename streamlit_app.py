@@ -10,14 +10,14 @@ import base64
 
 st.set_page_config(page_title="Automation Data Absen", layout="centered")
 
-st.title("Automation Data Absen")
 
 BASE_URL = "https://teko-cak.surabaya.go.id/cetak_new/lap_per_pegawai2/"
 ID_INSTANSI = "3.10.00.00.00"
 
 with st.sidebar:
-    st.image("https://www.surabaya.go.id/images/logo.png", width=100)
-    st.title("Main Menu")
+    # st.image("https://www.surabaya.go.id/images/logo.png", width=100)
+    st.title("Automation Data Absen")
+    # st.title("Main Menu")
     
     menu = option_menu(
         menu_title=None,
