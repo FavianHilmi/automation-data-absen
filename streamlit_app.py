@@ -214,13 +214,13 @@ elif menu == "Hitung Potongan":
                 df_detail = pd.DataFrame(all_results)
                 
                 # --- BAGIAN TOTAL PER PEGAWAI ---
-                st.write("### 📊 Ringkasan Total Potongan")
+                st.write("### Ringkasan Total Potongan")
                 df_summary = df_detail.groupby("Nama")["Potongan (%)"].sum().reset_index()
                 df_summary.columns = ["Nama Pegawai", "Total Potongan (%)"]
                 # Tambahkan styling agar lebih menarik
                 st.dataframe(df_summary.style.highlight_max(axis=0, color='#ffcccc'), use_container_width=True)
 
-                st.write("### 📝 Rincian Harian")
+                st.write("### Rincian Harian")
                 st.dataframe(df_detail, use_container_width=True)
 
                 # Export ke Excel dengan dua Sheet
