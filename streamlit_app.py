@@ -69,7 +69,8 @@ elif menu == "Proses Download Data":
         df = pd.read_excel(uploaded_file)
         df['Bulan'] = df['Bulan'].astype(str).str.zfill(2)
         df['Tanggal_Akhir'] = df['Tanggal_Akhir'].astype(str).str.zfill(2)
-        
+        df[]['Tahun'] = df['Tahun'].astype(str)
+
         st.write(f"Total data: **{len(df)} pegawai**")
 
         if st.button("Mulai Proses"):
@@ -93,7 +94,7 @@ elif menu == "Proses Download Data":
                         response = requests.get(BASE_URL, params=params, timeout=30)
                         if response.status_code == 200:
                             ext = "pdf" if file_type == "pdf" else "xls"
-                            file_name = f"Laporan_{nama}_{params['tgl']}-{params['bulan']}.{ext}"
+                            file_name = f"Laporan_{nama}_{params['tgl']}-{params['bulan']}-{params['tahun']}.{ext}"
                             
                             if output_mode == "File ZIP":
                                 zip_file.writestr(file_name, response.content)
