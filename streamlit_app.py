@@ -69,7 +69,6 @@ elif menu == "Proses Download Data":
         df = pd.read_excel(uploaded_file)
         df['Bulan'] = df['Bulan'].astype(str).str.zfill(2)
         df['Tanggal_Akhir'] = df['Tanggal_Akhir'].astype(str).str.zfill(2)
-        df[]['Tahun'] = df['Tahun'].astype(str)
 
         st.write(f"Total data: **{len(df)} pegawai**")
 
