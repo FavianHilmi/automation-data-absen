@@ -5,6 +5,7 @@ import io
 import zipfile
 import streamlit.components.v1 as components
 from bs4 import BeautifulSoup
+import base64
 
 st.set_page_config(page_title="Automation Data Absen", layout="centered")
 
@@ -14,7 +15,7 @@ BASE_URL = "https://teko-cak.surabaya.go.id/cetak_new/lap_per_pegawai2/"
 ID_INSTANSI = "3.10.00.00.00"
 
 st.sidebar.header("Navigasi")
-menu = st.sidebar.radio("Pilih Menu:", ["Download Template", "Proses Download Data" , "Hitung Potongan"])
+menu = st.sidebar.radio("Pilih Menu:", ["Download Template", "Proses Download Data", "Hitung Potongan"])
 
 if menu == "Download Template":
     st.subheader("Download Template Excel")
@@ -55,7 +56,6 @@ elif menu == "Proses Download Data":
             status_text = st.empty()
             
             zip_buffer = io.BytesIO()
-            
             success_files = []
 
             with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
@@ -85,7 +85,7 @@ elif menu == "Proses Download Data":
                     
                     progress_bar.progress((index + 1) / len(df))
 
-          status_text.success("Proses selesai")
+            status_text.success("Proses selesai")
 
             if output_mode == "File ZIP (Rekomendasi)":
                 st.download_button(
@@ -99,24 +99,20 @@ elif menu == "Proses Download Data":
                     if st.button("🚀 Download Semua File Sekaligus"):
                         js_script = ""
                         for f in success_files:
-                            import base64
                             b64 = base64.b64encode(f['content']).decode()
                             mime_type = "application/pdf" if file_type == "pdf" else "application/vnd.ms-excel"
-                            
                             js_script += f"""
-                                var link_{hash(f['name'])} = document.createElement('a');
-                                link_{hash(f['name'])}.href = 'data:{mime_type};base64,{b64}';
-                                link_{hash(f['name'])}.download = '{f['name']}';
-                                link_{hash(f['name'])}.click();
+                                var link = document.createElement('a');
+                                link.href = 'data:{mime_type};base64,{b64}';
+                                link.download = '{f['name']}';
+                                link.click();
                             """
-                        
                         components.html(f"<script>{js_script}</script>", height=0)
                         st.balloons()
                     
                     with st.expander("Lihat daftar file manual"):
                         for f in success_files:
                             st.download_button(label=f"💾 {f['name']}", data=f['content'], file_name=f['name'], key=f['name'])    
-                    
 
 elif menu == "Hitung Potongan":
     st.subheader("Hitung Potongan Gaji")
@@ -146,7 +142,6 @@ elif menu == "Hitung Potongan":
                 try:
                     response = requests.get(BASE_URL, params=params, timeout=30)
                     if response.status_code == 200:
-                        from bs4 import BeautifulSoup
                         soup = BeautifulSoup(response.text, 'html.parser')
                         table = soup.find('table', {'border': '1'})
                         
@@ -154,16 +149,13 @@ elif menu == "Hitung Potongan":
                             rows = table.find('tbody').find_all('tr')
                             for row in rows:
                                 cols = row.find_all('td')
-                                
-                                if len(cols) < 10:
-                                    continue
+                                if len(cols) < 10: continue
 
                                 hari_val = cols[0].get_text(strip=True).upper()
                                 tgl_val = cols[1].get_text(strip=True).upper()
 
                                 if "TOTAL" in hari_val or "TOTAL" in tgl_val or not tgl_val or tgl_val == "-":
                                     continue
-                                
                                 if not any(char.isdigit() for char in tgl_val):
                                     continue
 
@@ -173,15 +165,12 @@ elif menu == "Hitung Potongan":
                                 pulang_val = cols[6].get_text(strip=True)
                                 ket_val = cols[-1].get_text(strip=True).upper()
 
-                                if "HARI" in hari_val: continue
-
                                 potongan = 0.0
                                 detail = []
 
-                                if ket_val == 'M':
-                                    if hari_val not in ['SABTU', 'MINGGU']:
-                                        potongan = 3.0
-                                        detail.append("Mangkir (3%)")
+                                if ket_val == 'M' and hari_val not in ['SABTU', 'MINGGU']:
+                                    potongan = 3.0
+                                    detail.append("Mangkir (3%)")
                                 
                                 elif ket_val in ['H', '', 'NAN', '*']:
                                     if ket_val == 'H':
@@ -196,7 +185,6 @@ elif menu == "Hitung Potongan":
                                         def to_f(v):
                                             v = v.replace('-', '0').strip()
                                             return float(v) if v else 0.0
-                                        
                                         tot_m = (to_f(jam_telat_val) * 60) + to_f(mnt_telat_val)
                                         if tot_m > 0:
                                             if 1 <= tot_m <= 15: p = 0.25
@@ -209,13 +197,9 @@ elif menu == "Hitung Potongan":
 
                                 if potongan > 0:
                                     all_results.append({
-                                        "Nama": nama,
-                                        "Tanggal": tgl_val,
-                                        "Hari": hari_val,
-                                        "Potongan (%)": potongan,
-                                        "Alasan": " + ".join(detail)
+                                        "Nama": nama, "Tanggal": tgl_val, "Hari": hari_val,
+                                        "Potongan (%)": potongan, "Alasan": " + ".join(detail)
                                     })
-                    
                     progress_bar.progress((idx + 1) / len(df_pegawai))
                 except Exception as e:
                     st.error(f"Error {nama}: {e}")
@@ -224,33 +208,31 @@ elif menu == "Hitung Potongan":
 
             if all_results:
                 df_detail = pd.DataFrame(all_results)
-                
                 st.write("### Ringkasan Total Potongan")
                 df_summary_raw = df_detail.groupby("Nama").agg({
                     "Potongan (%)": "sum",
                     "Alasan": lambda x: " + ".join(x)
                 }).reset_index()
-               df_summary_web = df_summary_raw.copy()
+
+                df_summary_web = df_summary_raw.copy()
                 df_summary_web["Ringkasan"] = df_summary_web.apply(
                     lambda row: f"{row['Potongan (%)']:.2f}% — Detail: {row['Alasan']}", axis=1
                 )
                 
-                st.dataframe(
-                    df_summary_web[["Nama", "Ringkasan"]].style.highlight_max(axis=0, color='#ffcccc'), 
-                    use_container_width=True
-                )
+                st.dataframe(df_summary_web[["Nama", "Ringkasan"]].style.highlight_max(axis=0, color='#ffcccc'), use_container_width=True)
                 st.write("### Rincian Harian")
                 st.dataframe(df_detail, use_container_width=True)
 
                 buf = io.BytesIO()
                 with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
-                    df_summary.to_excel(writer, sheet_name='Summary', index=False)
+                    # PERBAIKAN: Menggunakan df_summary_raw bukan df_summary
+                    df_summary_raw.to_excel(writer, sheet_name='Summary', index=False)
                     df_detail.to_excel(writer, sheet_name='Detail_Harian', index=False)
                 
                 st.download_button(
                     label="Download Laporan (Excel)",
                     data=buf.getvalue(),
-                    file_name=f"rekap_potongan_{row_peg['Bulan']}_{row_peg['Tahun']}.xlsx",
+                    file_name=f"rekap_potongan.xlsx",
                     mime="application/vnd.ms-excel"
                 )
             else:
