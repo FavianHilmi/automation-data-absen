@@ -221,7 +221,7 @@ elif menu == "Hitung Potongan":
                     )
                     
                     st.dataframe(
-                        df_summary_web[["Nama", "Ringkasan"]].style.highlight_max(axis=0, color='#ffcccc'), 
+                        df_summary_web[["Nama", "Ringkasan"]], 
                         use_container_width=True
                     )
                 with st.expander("Rincian Harian", expanded=False):
