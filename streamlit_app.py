@@ -101,7 +101,6 @@ elif menu == "Hitung Potongan":
     st.subheader("Hitung Potongan via Web Scraping")
     st.write("Upload template excel untuk mengambil data langsung dari server.")
 
-    out_format = st.selectbox("Pilih Format Output:", ["Excel"])
     uploaded_file = st.file_uploader("Upload Template Pegawai:", type=["xlsx", "xls"])
 
     if uploaded_file:
@@ -116,7 +115,6 @@ elif menu == "Hitung Potongan":
                 nama = row_peg['Nama_Pegawai']
                 status_text.text(f"Menganalisis: {nama}...")
                 
-                # Format params sesuai kebutuhan URL
                 params = {
                     'tgl': row_peg['Tanggal_Akhir'],
                     'bulan': str(row_peg['Bulan']).zfill(2),
@@ -128,108 +126,95 @@ elif menu == "Hitung Potongan":
                 try:
                     response = requests.get(BASE_URL, params=params, timeout=30)
                     if response.status_code == 200:
-                        # Gunakan engine 'html5lib' atau 'lxml' agar lebih akurat membaca tabel kompleks
-                        all_tables = pd.read_html(io.StringIO(response.text))
-                        
-                        # CARI TABEL ABSEN: Cari tabel yang punya kata 'HARI' dan 'TANGGAL'
-                        df_absen = None
-                        for t in all_tables:
-                            t_str = t.astype(str)
-                            if t_str.apply(lambda r: r.str.contains('HARI').any(), axis=1).any():
-                                df_absen = t
-                                break
-                        
-                        if df_absen is not None:
-                            # 1. Cari baris header yang mengandung teks 'HARI'
-                            mask = df_absen.apply(lambda r: r.astype(str).str.contains('HARI').any(), axis=1)
-                            header_idx = df_absen.index[mask].tolist()[0]
-                            
-                            # 2. Ambil data setelah header
-                            # Kita tidak set header kolom secara manual agar index iloc tetap konsisten dengan struktur HTML
-                            df_data = df_absen.iloc[header_idx + 2:].reset_index(drop=True) 
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(response.text, 'html.parser')
+    table = soup.find('table', {'border': '1'})
+    
+    if table:
+        rows = table.find('tbody').find_all('tr')
+        
+        # --- DEBUG START ---
+        # Lihat baris pertama yang ditemukan untuk memastikan index kolom benar
+        test_cols = rows[0].find_all('td')
+        st.write(f"DEBUG: Baris pertama ditemukan {len(test_cols)} kolom.")
+        # Menampilkan isi setiap kolom agar kamu tahu index mana yang berisi jam/menit telat
+        debug_data = {f"Col {i}": col.get_text(strip=True) for i, col in enumerate(test_cols)}
+        st.json(debug_data) 
+        # --- DEBUG END ---
 
-                            for _, row in df_data.iterrows():
-                                # Ambil nilai identitas baris
-                                hari_val = str(row.iloc[0]).upper().strip()
-                                tgl_val = str(row.iloc[1]).upper().strip()
-                                
-                                # --- GUARD CLAUSE: BERHENTI JIKA BERTEMU BARIS TOTAL ---
-                                if "TOTAL" in hari_val or "TOTAL" in tgl_val or hari_val in ['NAN', '']:
-                                    break
-                                
-                                potongan = 0.0
-                                detail = []
+        for row in rows:
+            cols = row.find_all('td')
+            # Lewati baris yang bukan data harian (seperti TOTAL atau baris kosong)
+            if len(cols) < 10:
+                continue
 
-                                # --- LOGIKA 1: CEK KETERANGAN (KOLOM TERAKHIR) ---
-                                # M = Mangkir, H = Hadir, * = Libur
-                                ket = str(row.iloc[-1]).strip().upper()
-                                
-                                if ket == 'M': # Mangkir/Alpha
+            hari_val = cols[0].get_text(strip=True).upper()
+            jam_telat_raw = cols[4].get_text(strip=True)
+            mnt_telat_raw = cols[5].get_text(strip=True)
+
+            # Debug spesifik untuk melihat angka telat yang terbaca
+            if jam_telat_raw != "-" or mnt_telat_raw != "-":
+                st.write(f"🔍 Terdeteksi Potensi Telat: {hari_val} | Jam: {jam_telat_raw} | Menit: {mnt_telat_raw}")
+
+                                # --- LOGIKA POTONGAN ---
+                                if ket_val == 'M':
                                     if hari_val not in ['SABTU', 'MINGGU']:
                                         potongan = 3.0
-                                        detail.append("Tidak Masuk (3%)")
+                                        detail.append("Mangkir (3%)")
                                 
-                                # Jika Keterangan H (Hadir) atau Kosong, cek Telat & Absen Bolong
-                                elif ket in ['H', 'NAN', '', 'None']:
-                                    # --- LOGIKA 2: ABSEN BOLONG (1.5%) ---
-                                    # Kolom 3 = MASUK, Kolom 6 = PULANG (berdasarkan colspan HTML)
-                                    masuk = str(row.iloc[3]).strip()
-                                    pulang = str(row.iloc[6]).strip()
-                                    
-                                    if masuk in ['-', 'nan', '']:
+                                elif ket_val in ['H', '', 'NAN']:
+                                    # 1. Cek Absen Bolong
+                                    if masuk_val in ['-', '']:
                                         potongan += 1.5
                                         detail.append("Tdk Absen Masuk (1.5%)")
-                                    if pulang in ['-', 'nan', '']:
+                                    if pulang_val in ['-', '']:
                                         potongan += 1.5
                                         detail.append("Tdk Absen Pulang (1.5%)")
 
-                                    # --- LOGIKA 3: TERLAMBAT ---
+                                    # 2. Cek Telat (Ini bagian krusialnya)
                                     try:
-                                        def to_num(val):
-                                            v = str(val).replace('-', '0').strip()
-                                            return float(v) if v and v != 'nan' else 0
+                                        def to_float(val):
+                                            val = val.replace('-', '0').strip()
+                                            return float(val) if val else 0.0
 
-                                        # Kolom 4 = JAM Telat, Kolom 5 = MENIT Telat
-                                        j_telat = to_num(row.iloc[4])
-                                        m_telat = to_num(row.iloc[5])
+                                        j_telat = to_float(jam_telat_val)
+                                        m_telat = to_float(mnt_telat_val)
                                         tot_menit = (j_telat * 60) + m_telat
 
                                         if tot_menit > 0:
-                                            if 1 <= tot_menit <= 15: p = 0.25
-                                            elif 16 <= tot_menit <= 60: p = 0.5
-                                            elif 61 <= tot_menit <= 120: p = 1.0
-                                            else: p = 1.5
+                                            p_telat = 0
+                                            if 1 <= tot_menit <= 15: p_telat = 0.25
+                                            elif 16 <= tot_menit <= 60: p_telat = 0.5
+                                            elif 61 <= tot_menit <= 120: p_telat = 1.0
+                                            else: p_telat = 1.5
                                             
-                                            potongan += p
-                                            detail.append(f"Telat {int(tot_menit)}m ({p}%)")
+                                            potongan += p_telat
+                                            detail.append(f"Telat {int(tot_menit)}m ({p_telat}%)")
                                     except:
                                         pass
 
                                 if potongan > 0:
                                     all_results.append({
-                                        "Nama Pegawai": nama,
+                                        "Nama": nama,
                                         "Tanggal": tgl_val,
                                         "Hari": hari_val,
                                         "Potongan (%)": potongan,
-                                        "Keterangan": " + ".join(detail)
+                                        "Alasan": " + ".join(detail)
                                     })
-                        else:
-                            st.warning(f"Tabel absen tidak ditemukan untuk {nama}")
-                    
+
                     progress_bar.progress((idx + 1) / len(df_pegawai))
                 except Exception as e:
-                    st.error(f"Error pada {nama}: {e}")
+                    st.error(f"Gagal di {nama}: {e}")
 
-            status_text.success("Analisis Selesai!")
-            
+            status_text.success("Selesai!")
             if all_results:
-                df_final = pd.DataFrame(all_results)
-                st.write("### Rekap Potongan Pegawai")
-                st.dataframe(df_final, use_container_width=True)
-
-                buf = io.BytesIO()
-                with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
-                    df_final.to_excel(writer, index=False)
-                st.download_button("Download Rekap Excel", buf.getvalue(), "rekap_potongan_absen.xlsx")
+                res_df = pd.DataFrame(all_results)
+                st.dataframe(res_df)
+                
+                # Download Excel
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                    res_df.to_excel(writer, index=False)
+                st.download_button("Download Hasil", output.getvalue(), "potongan_absen.xlsx")
             else:
-                st.info("Hasil analisis: Tidak ada potongan yang ditemukan.")
+                st.info("Tidak ada potongan ditemukan.")
