@@ -96,7 +96,7 @@ elif menu == "Proses Download Data":
                 )
             else:
                 if success_files:
-                    if st.button("🚀 Download Semua File Sekaligus"):
+                    if st.button("Download Semua"):
                         js_script = ""
                         for f in success_files:
                             b64 = base64.b64encode(f['content']).decode()
@@ -110,9 +110,9 @@ elif menu == "Proses Download Data":
                         components.html(f"<script>{js_script}</script>", height=0)
                         st.balloons()
                     
-                    with st.expander("Lihat daftar file manual"):
+                    with st.expander("Daftar File"):
                         for f in success_files:
-                            st.download_button(label=f"💾 {f['name']}", data=f['content'], file_name=f['name'], key=f['name'])    
+                            st.download_button(label=f"{f['name']}", data=f['content'], file_name=f['name'], key=f['name'])    
 
 elif menu == "Hitung Potongan":
     st.subheader("Hitung Potongan Gaji")
