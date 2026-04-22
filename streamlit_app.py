@@ -98,8 +98,7 @@ elif menu == "Proses Download Data":
                     st.download_button(label=f"Simpan {f['name']}", data=f['content'], file_name=f['name'])     
 
 elif menu == "Hitung Potongan":
-    st.subheader("Hitung Potongan via Web Scraping")
-    st.write("Upload template excel untuk mengambil data langsung dari server.")
+    st.subheader("Hitung Potongan Gaji")
 
     uploaded_file = st.file_uploader("Upload Template Pegawai:", type=["xlsx", "xls"])
 
@@ -107,7 +106,7 @@ elif menu == "Hitung Potongan":
         df_pegawai = pd.read_excel(uploaded_file)
         all_results = []
 
-        if st.button("Mulai Hitung Potongan"):
+        if st.button("Hitung Potongan"):
             progress_bar = st.progress(0)
             status_text = st.empty()
             
@@ -135,20 +134,15 @@ elif menu == "Hitung Potongan":
                             for row in rows:
                                 cols = row.find_all('td')
                                 
-                                # 1. Pengaman Jumlah Kolom
                                 if len(cols) < 10:
                                     continue
 
                                 hari_val = cols[0].get_text(strip=True).upper()
                                 tgl_val = cols[1].get_text(strip=True).upper()
 
-                                # 2. PENGAMAN KETAT: Lewati jika baris TOTAL atau bukan data harian
-                                # Kita cek apakah kolom hari mengandung kata 'TOTAL' atau kolom tanggal kosong/isi 'TOTAL'
                                 if "TOTAL" in hari_val or "TOTAL" in tgl_val or not tgl_val or tgl_val == "-":
                                     continue
                                 
-                                # 3. Cek apakah ini benar-benar baris data (Tanggal biasanya mengandung angka)
-                                # Ini mencegah baris footer/keterangan ikut terproses
                                 if not any(char.isdigit() for char in tgl_val):
                                     continue
 
@@ -158,7 +152,6 @@ elif menu == "Hitung Potongan":
                                 pulang_val = cols[6].get_text(strip=True)
                                 ket_val = cols[-1].get_text(strip=True).upper()
 
-                                # Skip baris header jika terbaca di tbody
                                 if "HARI" in hari_val: continue
 
                                 potongan = 0.0
@@ -169,8 +162,7 @@ elif menu == "Hitung Potongan":
                                         potongan = 3.0
                                         detail.append("Mangkir (3%)")
                                 
-                                elif ket_val in ['H', '', 'NAN', '*']: # * adalah libur tapi bisa ada telat/absen
-                                    # 1. Cek Absen Bolong (Hanya jika hari kerja/H)
+                                elif ket_val in ['H', '', 'NAN', '*']:
                                     if ket_val == 'H':
                                         if masuk_val in ['-', '']:
                                             potongan += 1.5
@@ -179,7 +171,6 @@ elif menu == "Hitung Potongan":
                                             potongan += 1.5
                                             detail.append("Tdk Absen Pulang (1.5%)")
 
-                                    # 2. Cek Telat
                                     try:
                                         def to_f(v):
                                             v = v.replace('-', '0').strip()
@@ -213,24 +204,21 @@ elif menu == "Hitung Potongan":
             if all_results:
                 df_detail = pd.DataFrame(all_results)
                 
-                # --- BAGIAN TOTAL PER PEGAWAI ---
                 st.write("### Ringkasan Total Potongan")
                 df_summary = df_detail.groupby("Nama")["Potongan (%)"].sum().reset_index()
                 df_summary.columns = ["Nama Pegawai", "Total Potongan (%)"]
-                # Tambahkan styling agar lebih menarik
                 st.dataframe(df_summary.style.highlight_max(axis=0, color='#ffcccc'), use_container_width=True)
 
                 st.write("### Rincian Harian")
                 st.dataframe(df_detail, use_container_width=True)
 
-                # Export ke Excel dengan dua Sheet
                 buf = io.BytesIO()
                 with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
                     df_summary.to_excel(writer, sheet_name='Summary', index=False)
                     df_detail.to_excel(writer, sheet_name='Detail_Harian', index=False)
                 
                 st.download_button(
-                    label="Download Laporan Lengkap (Excel)",
+                    label="Download Laporan (Excel)",
                     data=buf.getvalue(),
                     file_name=f"rekap_potongan_{row_peg['Bulan']}_{row_peg['Tahun']}.xlsx",
                     mime="application/vnd.ms-excel"
