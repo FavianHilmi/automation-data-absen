@@ -208,32 +208,37 @@ elif menu == "Hitung Potongan":
 
             if all_results:
                 df_detail = pd.DataFrame(all_results)
-                st.write("### Ringkasan Total Potongan")
-                df_summary_raw = df_detail.groupby("Nama").agg({
-                    "Potongan (%)": "sum",
-                    "Alasan": lambda x: " + ".join(x)
-                }).reset_index()
-
-                df_summary_web = df_summary_raw.copy()
-                df_summary_web["Ringkasan"] = df_summary_web.apply(
-                    lambda row: f"{row['Potongan (%)']:.2f}%", axis=1
-                )
                 
-                st.dataframe(df_summary_web[["Nama", "Ringkasan"]], use_container_width=True)
-                st.write("### Rincian Harian")
-                st.dataframe(df_detail, use_container_width=True)
+                with st.expander("Ringkasan Total Potongan", expanded=True):
+                    df_summary_raw = df_detail.groupby("Nama").agg({
+                        "Potongan (%)": "sum",
+                        "Alasan": lambda x: " + ".join(x)
+                    }).reset_index()
+
+                    df_summary_web = df_summary_raw.copy()
+                    df_summary_web["Ringkasan"] = df_summary_web.apply(
+                        lambda row: f"{row['Potongan (%)']:.2f}%", axis=1
+                    )
+                    
+                    st.dataframe(
+                        df_summary_web[["Nama", "Ringkasan"]].style.highlight_max(axis=0, color='#ffcccc'), 
+                        use_container_width=True
+                    )
+                with st.expander("Rincian Harian", expanded=False):
+                    st.dataframe(df_detail, use_container_width=True)
 
                 buf = io.BytesIO()
                 with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
-                    # PERBAIKAN: Menggunakan df_summary_raw bukan df_summary
                     df_summary_raw.to_excel(writer, sheet_name='Summary', index=False)
                     df_detail.to_excel(writer, sheet_name='Detail_Harian', index=False)
                 
+                st.write("")
                 st.download_button(
                     label="Download Laporan (Excel)",
                     data=buf.getvalue(),
-                    file_name=f"rekap_potongan.xlsx",
-                    mime="application/vnd.ms-excel"
+                    file_name="rekap_potongan.xlsx",
+                    mime="application/vnd.ms-excel",
+                    use_container_width=True
                 )
             else:
                 st.info("Tidak ditemukan potongan pada periode ini.")
