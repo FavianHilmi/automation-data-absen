@@ -126,84 +126,66 @@ elif menu == "Hitung Potongan":
                 try:
                     response = requests.get(BASE_URL, params=params, timeout=30)
                     if response.status_code == 200:
-                        # Gunakan StringIO agar tidak ada warning
-                        html_data = io.StringIO(response.text)
-                        # Kita ambil tabel ke-2 (index 1) karena tabel pertama biasanya header Nama/NIP
-                        all_tables = pd.read_html(html_data)
+                        from bs4 import BeautifulSoup
+                        soup = BeautifulSoup(response.text, 'html.parser')
+                        table = soup.find('table', {'border': '1'})
                         
-                        # Cari tabel yang ada kata 'TANGGAL'
-                        df_absen = None
-                        for t in all_tables:
-                            if any('TANGGAL' in str(col).upper() for col in t.columns.get_level_values(0)):
-                                df_absen = t
-                                break
-                        
-                        if df_absen is not None:
-                            # Sederhanakan kolom (menggabungkan multi-index jika ada)
-                            if isinstance(df_absen.columns, pd.MultiIndex):
-                                df_absen.columns = ['_'.join(col).strip() if 'Unnamed' not in col[1] else col[0] for col in df_absen.columns]
-                            
-                            # Mapping index kolom secara manual berdasarkan struktur HTML yang kamu kirim
-                            # Index 0: HARI, 1: TANGGAL, 3: MASUK, 4: JAM_TELAT, 5: MENIT_TELAT, 6: PULANG, -1: KET
-                            
-                            for _, row in df_absen.iterrows():
-                                hari_val = str(row.iloc[0]).upper().strip()
-                                tgl_val = str(row.iloc[1]).upper().strip()
-
-                                # 1. STOP jika ketemu baris TOTAL
-                                if "TOTAL" in hari_val or "TOTAL" in tgl_val or hari_val == 'NAN' or not hari_val:
-                                    break
+                        if table:
+                            rows = table.find('tbody').find_all('tr')
+                            for row in rows:
+                                cols = row.find_all('td')
                                 
-                                # 2. Lewati jika baris header yang terbaca ulang
-                                if "HARI" in hari_val:
+                                # Baris TOTAL atau kosong biasanya kolomnya sedikit
+                                if len(cols) < 10:
+                                    if "TOTAL" in row.get_text().upper():
+                                        break
                                     continue
+
+                                hari_val = cols[0].get_text(strip=True).upper()
+                                tgl_val = cols[1].get_text(strip=True)
+                                masuk_val = cols[3].get_text(strip=True)
+                                jam_telat_val = cols[4].get_text(strip=True)
+                                mnt_telat_val = cols[5].get_text(strip=True)
+                                pulang_val = cols[6].get_text(strip=True)
+                                ket_val = cols[-1].get_text(strip=True).upper()
+
+                                # Skip baris header jika terbaca di tbody
+                                if "HARI" in hari_val: continue
 
                                 potongan = 0.0
                                 detail = []
-                                ket = str(row.iloc[-1]).strip().upper()
 
-                                # --- LOGIKA POTONGAN ---
-                                if ket == 'M': # Mangkir
+                                if ket_val == 'M':
                                     if hari_val not in ['SABTU', 'MINGGU']:
                                         potongan = 3.0
                                         detail.append("Mangkir (3%)")
                                 
-                                elif ket in ['H', '', 'NAN']: # Hadir atau belum ada ket
-                                    # A. Cek Absen Bolong (1.5% per kolom)
-                                    masuk = str(row.iloc[3]).strip()
-                                    pulang = str(row.iloc[6]).strip()
-                                    
-                                    if masuk in ['-', '', 'nan']:
-                                        potongan += 1.5
-                                        detail.append("Tdk Absen Masuk (1.5%)")
-                                    if pulang in ['-', '', 'nan']:
-                                        potongan += 1.5
-                                        detail.append("Tdk Absen Pulang (1.5%)")
+                                elif ket_val in ['H', '', 'NAN', '*']: # * adalah libur tapi bisa ada telat/absen
+                                    # 1. Cek Absen Bolong (Hanya jika hari kerja/H)
+                                    if ket_val == 'H':
+                                        if masuk_val in ['-', '']:
+                                            potongan += 1.5
+                                            detail.append("Tdk Absen Masuk (1.5%)")
+                                        if pulang_val in ['-', '']:
+                                            potongan += 1.5
+                                            detail.append("Tdk Absen Pulang (1.5%)")
 
-                                    # B. Cek Telat (Logika yang kamu minta)
+                                    # 2. Cek Telat
                                     try:
-                                        def clean_num(v):
-                                            v = str(v).replace('-', '0').strip()
+                                        def to_f(v):
+                                            v = v.replace('-', '0').strip()
                                             return float(v) if v else 0.0
+                                        
+                                        tot_m = (to_f(jam_telat_val) * 60) + to_f(mnt_telat_val)
+                                        if tot_m > 0:
+                                            if 1 <= tot_m <= 15: p = 0.25
+                                            elif 16 <= tot_m <= 60: p = 0.5
+                                            elif 61 <= tot_m <= 120: p = 1.0
+                                            else: p = 1.5
+                                            potongan += p
+                                            detail.append(f"Telat {int(tot_m)}m ({p}%)")
+                                    except: pass
 
-                                        # Berdasarkan HTML: iloc[4] adalah JAM telat, iloc[5] adalah MENIT telat
-                                        jam_telat = clean_num(row.iloc[4])
-                                        menit_telat = clean_num(row.iloc[5])
-                                        total_menit = (jam_telat * 60) + menit_telat
-
-                                        if total_menit > 0:
-                                            p_telat = 0
-                                            if 1 <= total_menit <= 15: p_telat = 0.25
-                                            elif 16 <= total_menit <= 60: p_telat = 0.5
-                                            elif 61 <= total_menit <= 120: p_telat = 1.0
-                                            else: p_telat = 1.5
-                                            
-                                            potongan += p_telat
-                                            detail.append(f"Telat {int(total_menit)}m ({p_telat}%)")
-                                    except:
-                                        pass
-
-                                # Simpan jika ada potongan
                                 if potongan > 0:
                                     all_results.append({
                                         "Nama": nama,
@@ -212,20 +194,37 @@ elif menu == "Hitung Potongan":
                                         "Potongan (%)": potongan,
                                         "Alasan": " + ".join(detail)
                                     })
-
+                    
                     progress_bar.progress((idx + 1) / len(df_pegawai))
                 except Exception as e:
-                    st.error(f"Gagal di {nama}: {e}")
+                    st.error(f"Error {nama}: {e}")
 
             status_text.success("Selesai!")
+
             if all_results:
-                res_df = pd.DataFrame(all_results)
-                st.dataframe(res_df)
+                df_detail = pd.DataFrame(all_results)
                 
-                # Download Excel
-                output = io.BytesIO()
-                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    res_df.to_excel(writer, index=False)
-                st.download_button("Download Hasil", output.getvalue(), "potongan_absen.xlsx")
+                # --- BAGIAN TOTAL PER PEGAWAI ---
+                st.write("### 📊 Ringkasan Total Potongan")
+                df_summary = df_detail.groupby("Nama")["Potongan (%)"].sum().reset_index()
+                df_summary.columns = ["Nama Pegawai", "Total Potongan (%)"]
+                # Tambahkan styling agar lebih menarik
+                st.dataframe(df_summary.style.highlight_max(axis=0, color='#ffcccc'), use_container_width=True)
+
+                st.write("### 📝 Rincian Harian")
+                st.dataframe(df_detail, use_container_width=True)
+
+                # Export ke Excel dengan dua Sheet
+                buf = io.BytesIO()
+                with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
+                    df_summary.to_excel(writer, sheet_name='Summary', index=False)
+                    df_detail.to_excel(writer, sheet_name='Detail_Harian', index=False)
+                
+                st.download_button(
+                    label="Download Laporan Lengkap (Excel)",
+                    data=buf.getvalue(),
+                    file_name=f"rekap_potongan_{row_peg['Bulan']}_{row_peg['Tahun']}.xlsx",
+                    mime="application/vnd.ms-excel"
+                )
             else:
-                st.info("Tidak ada potongan ditemukan.")
+                st.info("Tidak ditemukan potongan pada periode ini.")
