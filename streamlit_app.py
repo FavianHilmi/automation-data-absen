@@ -98,29 +98,38 @@ elif menu == "Proses Download Data":
 
 elif menu == "Hitung Potongan":
     st.subheader("Hitung Persentase Potongan Kehadiran")
-    st.write("Upload file laporan (XLS) untuk dihitung potongannya sesuai aturan.")
+    st.info("💡 Menu ini digunakan untuk memproses **File Laporan (XLS)** hasil download, bukan file template daftar pegawai.")
 
-    # Gunakan file_uploader untuk menerima banyak file sekaligus
-    uploaded_files = st.file_uploader("Upload File XLS Laporan:", type=["xlsx"], accept_multiple_files=True)
+    uploaded_files = st.file_uploader("Upload File XLS Laporan:", type=["xlsx", "xls"], accept_multiple_files=True)
 
     if uploaded_files:
         all_results = []
 
         for uploaded_file in uploaded_files:
             try:
-                # 1. Ambil Nama Pegawai dari Cell B4 (Row 4, Col 2)
-                # Gunakan engine='xlrd' karena biasanya file dari portal tersebut adalah .xls lama
-                df_info = pd.read_excel(uploaded_file, header=None, nrows=10)
-                nama_pegawai = df_info.iloc[3, 1] 
+                # Baca file untuk cek strukturnya
+                df_test = pd.read_excel(uploaded_file, header=None, nrows=5)
+                
+                # CEK: Apakah ini file template? (Jika cell A1 adalah 'Nama_Pegawai')
+                if df_test.iloc[0, 0] == 'Nama_Pegawai':
+                    st.warning(f"File '{uploaded_file.name}' terdeteksi sebagai file TEMPLATE. Mohon upload file laporan hasil download.")
+                    continue
 
-                # 2. Baca data tabel (Header asli ada di baris 10, jadi skip 9 baris)
+                # 1. Ambil Nama Pegawai (Laporan Surabaya biasanya di Cell B4 / baris index 3, kolom index 1)
+                nama_pegawai = df_test.iloc[3, 1] if len(df_test) > 3 else "Unknown"
+
+                # 2. Baca data tabel (Skip 9 baris untuk menuju header tabel asli)
                 df_absen = pd.read_excel(uploaded_file, skiprows=9)
                 
-                # Bersihkan kolom agar tidak ada spasi di nama kolom
+                # Bersihkan kolom
                 df_absen.columns = [str(c).strip() for c in df_absen.columns]
 
+                # Validasi: Apakah kolom TANGGAL ada?
+                if 'TANGGAL' not in df_absen.columns:
+                    st.error(f"Format file '{uploaded_file.name}' tidak sesuai dengan format laporan standar.")
+                    continue
+
                 for index, row in df_absen.iterrows():
-                    # Stop jika baris kosong atau mencapai "TOTAL"
                     if pd.isna(row.get('HARI')) or "TOTAL" in str(row.get('HARI')).upper():
                         break
                     
@@ -128,13 +137,12 @@ elif menu == "Hitung Potongan":
                     ket_list = []
                     
                     # LOGIKA 1: Tidak Masuk (3%)
-                    # Jika kolom Keterangan (ETERANGA) berisi '*' dan bukan hari libur
                     if str(row.get('ETERANGA')) == '*' and row['HARI'] not in ['MINGGU', 'SABTU']:
                         potongan = 3.0
                         ket_list.append("Tidak Masuk (3%)")
                     
                     else:
-                        # LOGIKA 2: Absen Bolong (1.5% masing-masing)
+                        # LOGIKA 2: Absen Bolong (1.5%)
                         if pd.isna(row.get('MASUK')):
                             potongan += 1.5
                             ket_list.append("Tanpa Absen Masuk (1.5%)")
@@ -142,28 +150,22 @@ elif menu == "Hitung Potongan":
                             potongan += 1.5
                             ket_list.append("Tanpa Absen Pulang (1.5%)")
 
-                        # LOGIKA 3: Terlambat (Berdasarkan kolom JAM dan MENIT di bagian TELAT MASUK)
-                        # Nama kolom di pandas bisa berubah jika ada duplikasi, pastikan index kolom benar
-                        # Berdasarkan gambar: JAM telat ada di kolom ke-6 (index 5) dan MENIT di kolom 7 (index 6)
+                        # LOGIKA 3: Terlambat
+                        # Index 5 = JAM, Index 6 = MENIT (Berdasarkan format laporan asli)
                         jam_t = row.iloc[5] if pd.notna(row.iloc[5]) and isinstance(row.iloc[5], (int, float)) else 0
                         menit_t = row.iloc[6] if pd.notna(row.iloc[6]) and isinstance(row.iloc[6], (int, float)) else 0
                         
                         total_menit = (jam_t * 60) + menit_t
 
                         if total_menit > 0:
-                            if 1 <= total_menit <= 15:
-                                p_val = 0.25
-                            elif 16 <= total_menit <= 60:
-                                p_val = 0.5
-                            elif 61 <= total_menit <= 120:
-                                p_val = 1.0
-                            else:
-                                p_val = 1.5
+                            if 1 <= total_menit <= 15: p_val = 0.25
+                            elif 16 <= total_menit <= 60: p_val = 0.5
+                            elif 61 <= total_menit <= 120: p_val = 1.0
+                            else: p_val = 1.5
                             
                             potongan += p_val
                             ket_list.append(f"Terlambat {int(total_menit)} mnt ({p_val}%)")
 
-                    # Simpan hanya jika ada potongan
                     if potongan > 0:
                         all_results.append({
                             "Nama Pegawai": nama_pegawai,
@@ -173,21 +175,17 @@ elif menu == "Hitung Potongan":
                             "Keterangan": " + ".join(ket_list)
                         })
             except Exception as e:
-                st.error(f"Gagal memproses file {uploaded_file.name}: {e}")
+                st.error(f"Error pada file {uploaded_file.name}: {e}")
 
         if all_results:
             df_hasil = pd.DataFrame(all_results)
-            st.success(f"Berhasil menghitung {len(df_hasil)} baris potongan.")
+            st.success(f"Ditemukan {len(df_hasil)} catatan potongan.")
             st.dataframe(df_hasil, use_container_width=True)
 
-            # Download Buttons
-            csv = df_hasil.to_csv(index=False).encode('utf-8')
-            st.download_button("Download Rekap (CSV)", csv, "rekap_potongan.csv", "text/csv")
-            
-            # Excel Download
+            # Export
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                df_hasil.to_excel(writer, index=False, sheet_name='Potongan')
-            st.download_button("Download Rekap (Excel)", output.getvalue(), "rekap_potongan.xlsx")
+                df_hasil.to_excel(writer, index=False, sheet_name='Rekap Potongan')
+            st.download_button("Download Hasil Perhitungan (Excel)", output.getvalue(), "rekap_potongan.xlsx")
         else:
-            st.info("Semua pegawai disiplin! Tidak ditemukan potongan.")
+            st.info("Tidak ada potongan yang perlu diproses dari file yang diupload.")
