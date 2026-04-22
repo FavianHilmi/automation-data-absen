@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 import io
 import zipfile
+import streamlit.components.v1 as components
 from bs4 import BeautifulSoup
 
 st.set_page_config(page_title="Automation Data Absen", layout="centered")
@@ -84,7 +85,7 @@ elif menu == "Proses Download Data":
                     
                     progress_bar.progress((index + 1) / len(df))
 
-            status_text.success("Proses selesai")
+          status_text.success("Proses selesai")
 
             if output_mode == "File ZIP (Rekomendasi)":
                 st.download_button(
@@ -94,8 +95,28 @@ elif menu == "Proses Download Data":
                     mime="application/zip"
                 )
             else:
-                for f in success_files:
-                    st.download_button(label=f"Simpan {f['name']}", data=f['content'], file_name=f['name'])     
+                if success_files:
+                    if st.button("🚀 Download Semua File Sekaligus"):
+                        js_script = ""
+                        for f in success_files:
+                            import base64
+                            b64 = base64.b64encode(f['content']).decode()
+                            mime_type = "application/pdf" if file_type == "pdf" else "application/vnd.ms-excel"
+                            
+                            js_script += f"""
+                                var link_{hash(f['name'])} = document.createElement('a');
+                                link_{hash(f['name'])}.href = 'data:{mime_type};base64,{b64}';
+                                link_{hash(f['name'])}.download = '{f['name']}';
+                                link_{hash(f['name'])}.click();
+                            """
+                        
+                        components.html(f"<script>{js_script}</script>", height=0)
+                        st.balloons()
+                    
+                    with st.expander("Lihat daftar file manual"):
+                        for f in success_files:
+                            st.download_button(label=f"💾 {f['name']}", data=f['content'], file_name=f['name'], key=f['name'])    
+                    
 
 elif menu == "Hitung Potongan":
     st.subheader("Hitung Potongan Gaji")
@@ -205,10 +226,19 @@ elif menu == "Hitung Potongan":
                 df_detail = pd.DataFrame(all_results)
                 
                 st.write("### Ringkasan Total Potongan")
-                df_summary = df_detail.groupby("Nama")["Potongan (%)"].sum().reset_index()
-                df_summary.columns = ["Nama Pegawai", "Total Potongan (%)"]
-                st.dataframe(df_summary.style.highlight_max(axis=0, color='#ffcccc'), use_container_width=True)
-
+                df_summary_raw = df_detail.groupby("Nama").agg({
+                    "Potongan (%)": "sum",
+                    "Alasan": lambda x: " + ".join(x)
+                }).reset_index()
+               df_summary_web = df_summary_raw.copy()
+                df_summary_web["Ringkasan"] = df_summary_web.apply(
+                    lambda row: f"{row['Potongan (%)']:.2f}% — Detail: {row['Alasan']}", axis=1
+                )
+                
+                st.dataframe(
+                    df_summary_web[["Nama", "Ringkasan"]].style.highlight_max(axis=0, color='#ffcccc'), 
+                    use_container_width=True
+                )
                 st.write("### Rincian Harian")
                 st.dataframe(df_detail, use_container_width=True)
 
