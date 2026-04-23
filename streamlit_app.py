@@ -70,6 +70,11 @@ elif menu == "Proses Download Data":
         df['Bulan'] = df['Bulan'].astype(str).str.zfill(2)
         df['Tanggal_Akhir'] = df['Tanggal_Akhir'].astype(str).str.zfill(2)
 
+        if "download_results" not in st.session_state:
+            st.session_state.download_results = None
+        if "zip_data" not in st.session_state:
+            st.session_state.zip_data = None
+
         st.write(f"Total data: **{len(df)} pegawai**")
 
         if st.button("Mulai Proses"):
@@ -77,11 +82,11 @@ elif menu == "Proses Download Data":
             status_text = st.empty()
             
             zip_buffer = io.BytesIO()
-            success_files = []
+            temp_success_files = []
 
-            with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
                 for index, row in df.iterrows():
-                    nama = row['Nama_Pegawai']
+                    nama = str(row['Nama_Pegawai']).replace("/", "-")
                     status_text.text(f"Mendownload: {nama}...")
                     
                     params = {
@@ -95,10 +100,9 @@ elif menu == "Proses Download Data":
                             ext = "pdf" if file_type == "pdf" else "xls"
                             file_name = f"Laporan_{nama}_{params['tgl']}-{params['bulan']}-{params['tahun']}.{ext}"
                             
-                            if output_mode == "File ZIP":
-                                zip_file.writestr(file_name, response.content)
-                            else:
-                                success_files.append({"name": file_name, "content": response.content})
+                            zip_file.writestr(file_name, response.content)
+                            
+                            temp_success_files.append({"name": file_name, "content": response.content})
                         else:
                             st.error(f"Gagal: {nama} (Status: {response.status_code})")
                     except Exception as e:
@@ -106,34 +110,44 @@ elif menu == "Proses Download Data":
                     
                     progress_bar.progress((index + 1) / len(df))
 
-            status_text.success("Proses selesai")
+            st.session_state.download_results = temp_success_files
+            st.session_state.zip_data = zip_buffer.getvalue()
+            status_text.success("Proses selesai!")
 
-            if output_mode == "File ZIP (Rekomendasi)":
+        if st.session_state.download_results:
+            if "File ZIP" in output_mode:
                 st.download_button(
                     label="Download Semua (ZIP)",
-                    data=zip_buffer.getvalue(),
+                    data=st.session_state.zip_data,
                     file_name=f"Laporan_Absen_{file_type}.zip",
-                    mime="application/zip"
+                    mime="application/zip",
+                    use_container_width=True
                 )
             else:
-                if success_files:
-                    if st.button("Download Semua"):
-                        js_script = ""
-                        for f in success_files:
-                            b64 = base64.b64encode(f['content']).decode()
-                            mime_type = "application/pdf" if file_type == "pdf" else "application/vnd.ms-excel"
-                            js_script += f"""
-                                var link = document.createElement('a');
-                                link.href = 'data:{mime_type};base64,{b64}';
-                                link.download = '{f['name']}';
-                                link.click();
-                            """
-                        components.html(f"<script>{js_script}</script>", height=0)
-                        st.balloons()
-                    
-                    with st.expander("Daftar File"):
-                        for f in success_files:
-                            st.download_button(label=f"{f['name']}", data=f['content'], file_name=f['name'], key=f['name'])    
+                if st.button("Download Semua"):
+                    js_script = ""
+                    for f in st.session_state.download_results:
+                        b64 = base64.b64encode(f['content']).decode()
+                        mime_type = "application/pdf" if file_type == "pdf" else "application/vnd.ms-excel"
+                        js_script += f"""
+                            var link = document.createElement('a');
+                            link.href = 'data:{mime_type};base64,{b64}';
+                            link.download = '{f['name']}';
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                        """
+                    components.html(f"<script>{js_script}</script>", height=0)
+                    st.balloons()
+                
+                with st.expander("📂 Daftar File (Download Manual)", expanded=True):
+                    for f in st.session_state.download_results:
+                        st.download_button(
+                            label=f"📄 {f['name']}", 
+                            data=f['content'], 
+                            file_name=f['name'], 
+                            key=f"dl_{f['name']}"
+                        )
 
 elif menu == "Hitung Potongan":
     st.subheader("Hitung Potongan Gaji")
@@ -222,7 +236,7 @@ elif menu == "Hitung Potongan":
                                 if potongan > 0:
                                     all_results.append({
                                         "Nama": nama, "Tanggal": tgl_val, "Hari": hari_val,
-                                        "Potongan (%)": potongan
+                                        "Potongan (%)": potongan, "Alasan": " + ".join(detail)
                                     })
                     progress_bar.progress((idx + 1) / len(df_pegawai))
                 except Exception as e:
@@ -236,7 +250,7 @@ elif menu == "Hitung Potongan":
             
             with st.expander("Total Potongan Gaji", expanded=True):
                 df_summary_raw = df_detail.groupby("Nama").agg({
-                    "Potongan (%)": "sum",
+                    "Potongan (%)": "sum" 
                 }).reset_index()
 
                 df_summary_web = df_summary_raw.copy()
