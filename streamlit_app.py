@@ -124,7 +124,7 @@ elif menu == "Proses Download Data":
                     use_container_width=True
                 )
             else:
-                iif st.button("Download Semua"):
+                if st.button("Download Semua"):
                     js_script = """
                     const files = [
                     """
