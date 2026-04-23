@@ -124,23 +124,33 @@ elif menu == "Proses Download Data":
                     use_container_width=True
                 )
             else:
-                if st.button("Download Semua"):
-                    js_script = ""
+                iif st.button("Download Semua"):
+                    js_script = """
+                    const files = [
+                    """
                     for f in st.session_state.download_results:
                         b64 = base64.b64encode(f['content']).decode()
                         mime_type = "application/pdf" if file_type == "pdf" else "application/vnd.ms-excel"
-                        js_script += f"""
-                            var link = document.createElement('a');
-                            link.href = 'data:{mime_type};base64,{b64}';
-                            link.download = '{f['name']}';
+                        js_script += f"{{name: '{f['name']}', data: 'data:{mime_type};base64,{b64}'}},"
+                    
+                    js_script += """
+                    ];
+                    
+                    files.forEach((file, index) => {
+                        setTimeout(() => {
+                            const link = document.createElement('a');
+                            link.href = file.data;
+                            link.download = file.name;
                             document.body.appendChild(link);
                             link.click();
                             document.body.removeChild(link);
-                        """
+                        }, index * 1000);
+                    });
+                    """
                     components.html(f"<script>{js_script}</script>", height=0)
-                    st.balloons()
+                    st.success("Mohon tunggu prosesnya.")
                 
-                with st.expander("📂 Daftar File (Download Manual)", expanded=True):
+                with st.expander("Daftar File (Download Manual)", expanded=True):
                     for f in st.session_state.download_results:
                         st.download_button(
                             label=f"📄 {f['name']}", 
