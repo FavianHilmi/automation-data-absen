@@ -26,13 +26,11 @@ with st.sidebar:
         menu_icon="cast", 
         default_index=0,
         styles={
-            "container": {"padding": "5px", "background-color": "#262730"},
             "icon": {"color": "#00d4ff", "font-size": "18px"}, 
             "nav-link": {
                 "font-size": "14px", 
                 "text-align": "left", 
                 "margin": "5px", 
-                "--hover-color": "#31333f"
             },
             "nav-link-selected": {"background-color": "#007bff"},
         }
@@ -148,7 +146,7 @@ elif menu == "Proses Download Data":
                     });
                     """
                     components.html(f"<script>{js_script}</script>", height=0)
-                    st.success("Mohon tunggu prosesnya.")
+                    st.success("Bentar, ditunggu dulu.")
                 
                 with st.expander("Daftar File (Download Manual)", expanded=True):
                     for f in st.session_state.download_results:
